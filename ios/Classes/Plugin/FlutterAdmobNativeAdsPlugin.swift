@@ -50,6 +50,9 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
     /// Registry of banner ad loaded callbacks by controller ID (for platform views)
     private var bannerAdCallbacks: [String: (GADBannerView) -> Void] = [:]
 
+    /// Cache of loaded banner ads (to handle race condition between ad load and platform view creation)
+    private var loadedBannerAds: [String: GADBannerView] = [:]
+
     /// Gets the preloaded native ad for the given controller ID.
     /// Returns nil if no ad is loaded for the controller.
     public func getPreloadedAd(controllerId: String) -> GADNativeAd? {
@@ -91,8 +94,9 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
 
     /// Gets the preloaded banner ad view for the given controller ID.
     /// Returns nil if no ad is loaded for the controller.
+    /// Checks the cache first, then falls back to the loader.
     public func getBannerAd(controllerId: String) -> GADBannerView? {
-        return bannerAdLoaders[controllerId]?.getBannerView()
+        return loadedBannerAds[controllerId] ?? bannerAdLoaders[controllerId]?.getBannerView()
     }
 
     /// Registers a callback to be invoked when a banner ad is loaded for the given controller.
@@ -366,6 +370,9 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
             print("[FlutterAdmobNativeAds] Banner ad loaded callback invoked for controller: \(controllerId)")
             print("[FlutterAdmobNativeAds] Registered callbacks: \(self.bannerAdCallbacks.keys)")
 
+            // Cache the bannerView to handle race condition with platform view creation
+            self.loadedBannerAds[controllerId] = bannerView
+
             if let callback = self.bannerAdCallbacks[controllerId] {
                 print("[FlutterAdmobNativeAds] Invoking callback for controller: \(controllerId)")
                 DispatchQueue.main.async {
@@ -430,6 +437,9 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
             print("[FlutterAdmobNativeAds] Banner ad loaded callback invoked for controller: \(controllerId)")
             print("[FlutterAdmobNativeAds] Registered callbacks: \(self.bannerAdCallbacks.keys)")
 
+            // Cache the bannerView to handle race condition with platform view creation
+            self.loadedBannerAds[controllerId] = bannerView
+
             if let callback = self.bannerAdCallbacks[controllerId] {
                 print("[FlutterAdmobNativeAds] Invoking callback for controller: \(controllerId)")
                 DispatchQueue.main.async {
@@ -462,6 +472,7 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
         bannerAdLoaders[controllerId]?.destroy()
         bannerAdLoaders.removeValue(forKey: controllerId)
         bannerAdCallbacks.removeValue(forKey: controllerId)
+        loadedBannerAds.removeValue(forKey: controllerId)
 
         result(nil)
     }
@@ -476,6 +487,7 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
         // Clean up all banner loaders
         bannerAdLoaders.values.forEach { $0.destroy() }
         bannerAdLoaders.removeAll()
+        loadedBannerAds.removeAll()
 
         // Clear callbacks
         adLoadedCallbacks.removeAll()

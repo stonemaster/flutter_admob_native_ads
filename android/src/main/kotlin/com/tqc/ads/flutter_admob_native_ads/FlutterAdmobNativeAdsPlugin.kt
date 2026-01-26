@@ -71,6 +71,9 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
     // Registry of banner ad loaded callbacks by controller ID (for platform views)
     private val bannerAdCallbacks = mutableMapOf<String, (AdView) -> Unit>()
 
+    // Cache of loaded banner ads (to handle race condition between ad load and platform view creation)
+    private val loadedBannerAds = mutableMapOf<String, AdView>()
+
     /**
      * Gets the preloaded native ad for the given controller ID.
      * Returns null if no ad is loaded for the controller.
@@ -113,9 +116,10 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
     /**
      * Gets the preloaded banner ad view for the given controller ID.
      * Returns null if no ad is loaded for the controller.
+     * Checks the cache first, then falls back to the loader.
      */
     fun getBannerAd(controllerId: String): AdView? {
-        return bannerAdLoaders[controllerId]?.getAdView()
+        return loadedBannerAds[controllerId] ?: bannerAdLoaders[controllerId]?.getAdView()
     }
 
     /**
@@ -362,6 +366,8 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
         )
 
         loader.setOnAdLoadedCallback { adView ->
+            // Cache the adView to handle race condition with platform view creation
+            loadedBannerAds[controllerId] = adView
             bannerAdCallbacks[controllerId]?.invoke(adView)
         }
 
@@ -400,6 +406,8 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
         )
 
         loader.setOnAdLoadedCallback { adView ->
+            // Cache the adView to handle race condition with platform view creation
+            loadedBannerAds[controllerId] = adView
             bannerAdCallbacks[controllerId]?.invoke(adView)
         }
 
@@ -422,6 +430,7 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
         bannerAdLoaders[controllerId]?.destroy()
         bannerAdLoaders.remove(controllerId)
         bannerAdCallbacks.remove(controllerId)
+        loadedBannerAds.remove(controllerId)
 
         result.success(null)
     }
@@ -439,6 +448,7 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
         // Clean up all banner loaders
         bannerAdLoaders.values.forEach { it.destroy() }
         bannerAdLoaders.clear()
+        loadedBannerAds.clear()
 
         instance = null
     }

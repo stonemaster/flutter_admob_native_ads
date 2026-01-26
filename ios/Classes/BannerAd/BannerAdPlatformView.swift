@@ -33,6 +33,8 @@ class BannerAdPlatformView: NSObject, FlutterPlatformView {
         return containerView
     }
 
+    /// Registers with the plugin to receive ad updates.
+    /// IMPORTANT: Register callback FIRST, then check existing ad to avoid race condition.
     private func registerForAdUpdates() {
         guard let controllerId = controllerId else {
             log("Invalid controllerId, cannot register for ad updates")
@@ -41,14 +43,16 @@ class BannerAdPlatformView: NSObject, FlutterPlatformView {
 
         log("Registering for banner ad updates for controller: \(controllerId)")
 
-        // Check if ad is already loaded
+        // Register callback FIRST to avoid missing ads that load between check and register
+        FlutterAdmobNativeAdsPlugin.shared()?.registerBannerAdCallback(controllerId: controllerId) { [weak self] bannerView in
+            self?.log("Received banner ad via callback")
+            self?.onAdLoaded(bannerView)
+        }
+
+        // THEN check if ad is already loaded (from cache)
         if let existingBannerView = FlutterAdmobNativeAdsPlugin.shared()?.getBannerAd(controllerId: controllerId) {
             log("Banner ad already loaded, adding to container immediately")
             onAdLoaded(existingBannerView)
-        }
-
-        FlutterAdmobNativeAdsPlugin.shared()?.registerBannerAdCallback(controllerId: controllerId) { [weak self] bannerView in
-            self?.onAdLoaded(bannerView)
         }
     }
 
