@@ -118,6 +118,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
   bool _ownsController = false;
   bool _isLoading = true;
   bool _hasError = false;
+  bool _isReloading = false;
   String _errorMessage = '';
   bool _isVisible = false;
 
@@ -169,6 +170,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
 
       setState(() {
         _isLoading = state == BannerAdState.loading;
+        _isReloading = state == BannerAdState.reloading;
         _hasError = state == BannerAdState.error;
         if (_hasError) {
           _errorMessage = _controller.errorMessage ?? 'Unknown error';
@@ -269,8 +271,14 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
     if (widget.options.enableDebugLogs) {
       debugPrint(
         '[BannerAdWidget] Building content: isLoading=$_isLoading, '
-        'hasError=$_hasError, controllerState=${_controller.state.name}',
+        'isReloading=$_isReloading, hasError=$_hasError, '
+        'controllerState=${_controller.state.name}',
       );
+    }
+
+    // When reloading, keep showing the current ad (no shimmer flash)
+    if (_isReloading) {
+      return _buildPlatformView();
     }
 
     if (_isLoading) {

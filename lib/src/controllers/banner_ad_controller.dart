@@ -178,6 +178,9 @@ class BannerAdController extends Object with AdControllerMixin<BannerAdState> {
   String get disposeMethodName => 'disposeBannerAd';
 
   @override
+  int? get reloadingStateIndex => BannerAdState.reloading.index;
+
+  @override
   void Function() get onAdLoadedCallback => () => events.onAdLoaded?.call();
 
   @override
@@ -262,13 +265,16 @@ enum BannerAdState implements AdStateBase {
   loaded,
 
   /// Ad failed to load.
-  error;
+  error,
+
+  /// Ad is reloading in background (keeps showing current ad).
+  reloading;
 
   @override
   bool get isLoading => this == BannerAdState.loading;
 
   @override
-  bool get isLoaded => this == BannerAdState.loaded;
+  bool get isLoaded => this == BannerAdState.loaded || this == BannerAdState.reloading;
 
   @override
   bool get hasError => this == BannerAdState.error;

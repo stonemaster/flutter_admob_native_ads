@@ -125,6 +125,10 @@ mixin AdControllerMixin<TState> {
   /// Gets the runtime type for logging.
   Type get controllerType;
 
+  /// Gets the reloading state index (for background reload without shimmer).
+  /// Returns null if the state enum doesn't have a reloading state.
+  int? get reloadingStateIndex => null;
+
   /// Sets up the method channel for receiving callbacks.
   void setupChannel() {
     channel.setMethodCallHandler(handleMethodCall);
@@ -230,7 +234,14 @@ mixin AdControllerMixin<TState> {
   Future<void> performReload() async {
     if (isDisposed) return;
 
-    state = stateFromIndex(1); // loading
+    // Use reloading state if available (keeps showing current ad),
+    // otherwise fall back to loading state
+    final reloadStateIdx = reloadingStateIndex;
+    if (reloadStateIdx != null) {
+      state = stateFromIndex(reloadStateIdx); // reloading (background)
+    } else {
+      state = stateFromIndex(1); // loading (shows shimmer)
+    }
     errorMessage = null;
     errorCode = null;
     stateController.add(state);
