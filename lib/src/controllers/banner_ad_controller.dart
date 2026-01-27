@@ -202,9 +202,6 @@ class BannerAdController extends Object with AdControllerMixin<BannerAdState> {
   @override
   void handleAdPaid(double value, String currency) {
     events.onAdPaid?.call(value, currency);
-    if (enableDebugLogs) {
-      debugPrint('[BannerAdController] Ad paid: \$$value $currency');
-    }
   }
 
   @override

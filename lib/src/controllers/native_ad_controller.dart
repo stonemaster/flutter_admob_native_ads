@@ -208,18 +208,12 @@ class NativeAdController extends Object with AdControllerMixin<NativeAdState> {
 
   @override
   Future<void> showCachedAd() async {
-    if (enableDebugLogs) {
-      debugPrint('[NativeAdController] Showing cached ad from preload');
-    }
     events.onCachedAdReady?.call();
   }
 
   @override
   Future<void> triggerPreloadForCache() async {
     if (_preloadedAdController != null && !_preloadedAdController!.isDisposed) {
-      if (enableDebugLogs) {
-        debugPrint('[NativeAdController] Triggering preload for next cache');
-      }
       _preloadedAdController!.preload();
     }
   }
@@ -247,9 +241,6 @@ class NativeAdController extends Object with AdControllerMixin<NativeAdState> {
   /// it will be shown immediately instead of requesting a new ad.
   void setPreloadedAdController(NativeAdController? controller) {
     _preloadedAdController = controller;
-    if (enableDebugLogs) {
-      debugPrint('[NativeAdController] Preloaded controller set: ${controller?.id}');
-    }
   }
 
   /// Updates the event callbacks.

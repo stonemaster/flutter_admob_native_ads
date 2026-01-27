@@ -174,14 +174,6 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
     _controller.stateStream.listen((state) {
       if (!mounted) return;
 
-      if (widget.options.enableDebugLogs) {
-        debugPrint(
-          '[NativeAdWidget] State changed: ${state.name}, '
-          'isPreloaded: ${_controller.isPreloaded}, '
-          'isLoaded: ${_controller.isLoaded}',
-        );
-      }
-
       setState(() {
         _isLoading = state == NativeAdState.loading;
         _hasError = state == NativeAdState.error;
@@ -232,10 +224,6 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
 
     // Notify parent widget that cached ad is ready
     widget.onCachedAdReady?.call();
-
-    if (widget.options.enableDebugLogs) {
-      debugPrint('[NativeAdWidget] Cached ad ready, notifying parent');
-    }
   }
 
   void _handleVisibilityChanged(VisibilityInfo info) {
@@ -246,13 +234,6 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
 
       // Update controller visibility state for reload logic
       _controller.updateVisibility(isNowVisible);
-
-      if (widget.options.enableDebugLogs) {
-        debugPrint(
-          '[NativeAdWidget] Visibility changed: $isNowVisible '
-          '(${(info.visibleFraction * 100).toStringAsFixed(0)}%)',
-        );
-      }
     }
   }
 
@@ -297,13 +278,6 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
   }
 
   Widget _buildContent() {
-    if (widget.options.enableDebugLogs) {
-      debugPrint(
-        '[NativeAdWidget] Building content: isLoading=$_isLoading, '
-        'hasError=$_hasError, controllerState=${_controller.state.name}',
-      );
-    }
-
     if (_isLoading) {
       return _buildLoadingState();
     }
@@ -316,10 +290,6 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
   }
 
   Widget _buildLoadingState() {
-    if (widget.options.enableDebugLogs) {
-      debugPrint('[NativeAdWidget] Building loading state (shimmer)');
-    }
-
     if (widget.loadingWidget != null) {
       return widget.loadingWidget!;
     }
@@ -339,13 +309,6 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
   }
 
   Widget _buildPlatformView() {
-    if (widget.options.enableDebugLogs) {
-      debugPrint(
-        '[NativeAdWidget] Building platform view: controllerId=${_controller.id}, '
-        'isPreloaded=${_controller.isPreloaded}, isLoaded=${_controller.isLoaded}',
-      );
-    }
-
     final viewType = widget.options.layoutType.viewType;
     final creationParams = {
       'controllerId': _controller.id,
@@ -385,9 +348,7 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
   }
 
   void _onPlatformViewCreated(int id) {
-    if (widget.options.enableDebugLogs) {
-      debugPrint('[NativeAdWidget] Platform view created: $id');
-    }
+    // Platform view created successfully
   }
 }
 

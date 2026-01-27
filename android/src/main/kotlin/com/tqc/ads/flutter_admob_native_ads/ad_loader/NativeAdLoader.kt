@@ -44,11 +44,8 @@ class NativeAdLoader(
      * Loads a native ad.
      */
     fun loadAd() {
-        log("Loading ad for unit: $adUnitId")
-
         val adLoaderBuilder = AdLoader.Builder(context, adUnitId)
             .forNativeAd { ad ->
-                log("Native ad received")
                 nativeAd?.destroy()
                 nativeAd = ad
                 onAdLoadedCallback?.invoke(ad)
@@ -65,22 +62,18 @@ class NativeAdLoader(
                 }
 
                 override fun onAdClicked() {
-                    log("Ad clicked")
                     sendEvent("onAdClicked", mapOf("controllerId" to controllerId))
                 }
 
                 override fun onAdImpression() {
-                    log("Ad impression recorded")
                     sendEvent("onAdImpression", mapOf("controllerId" to controllerId))
                 }
 
                 override fun onAdOpened() {
-                    log("Ad opened")
                     sendEvent("onAdOpened", mapOf("controllerId" to controllerId))
                 }
 
                 override fun onAdClosed() {
-                    log("Ad closed")
                     sendEvent("onAdClosed", mapOf("controllerId" to controllerId))
                 }
             })
@@ -112,7 +105,6 @@ class NativeAdLoader(
      * Destroys the loader and releases resources.
      */
     fun destroy() {
-        log("Destroying ad loader")
         nativeAd?.destroy()
         nativeAd = null
         adLoader = null

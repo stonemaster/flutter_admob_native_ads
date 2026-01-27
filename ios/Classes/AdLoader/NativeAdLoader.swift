@@ -36,8 +36,6 @@ class NativeAdLoader: NSObject {
 
     /// Loads a native ad.
     func loadAd() {
-        log("Loading ad for unit: \(adUnitId)")
-
         // Get root view controller
         guard let rootViewController = UIApplication.shared.windows.first?.rootViewController else {
             log("No root view controller available")
@@ -69,7 +67,6 @@ class NativeAdLoader: NSObject {
 
     /// Destroys the loader and releases resources.
     func destroy() {
-        log("Destroying ad loader")
         nativeAd = nil
         adLoader = nil
     }
@@ -112,8 +109,6 @@ extension NativeAdLoader: GADAdLoaderDelegate {
 extension NativeAdLoader: GADNativeAdLoaderDelegate {
 
     func adLoader(_ adLoader: GADAdLoader, didReceive nativeAd: GADNativeAd) {
-        log("Native ad received")
-
         self.nativeAd = nativeAd
         nativeAd.delegate = self
 
@@ -130,28 +125,24 @@ extension NativeAdLoader: GADNativeAdLoaderDelegate {
 extension NativeAdLoader: GADNativeAdDelegate {
 
     func nativeAdDidRecordClick(_ nativeAd: GADNativeAd) {
-        log("Ad clicked")
         sendEvent("onAdClicked", arguments: [
             "controllerId": controllerId
         ])
     }
 
     func nativeAdDidRecordImpression(_ nativeAd: GADNativeAd) {
-        log("Ad impression recorded")
         sendEvent("onAdImpression", arguments: [
             "controllerId": controllerId
         ])
     }
 
     func nativeAdWillPresentScreen(_ nativeAd: GADNativeAd) {
-        log("Ad will present screen")
         sendEvent("onAdOpened", arguments: [
             "controllerId": controllerId
         ])
     }
 
     func nativeAdDidDismissScreen(_ nativeAd: GADNativeAd) {
-        log("Ad dismissed screen")
         sendEvent("onAdClosed", arguments: [
             "controllerId": controllerId
         ])

@@ -41,27 +41,20 @@ class BannerAdPlatformView: NSObject, FlutterPlatformView {
             return
         }
 
-        log("Registering for banner ad updates for controller: \(controllerId)")
-
         // Register callback FIRST to avoid missing ads that load between check and register
         FlutterAdmobNativeAdsPlugin.shared()?.registerBannerAdCallback(controllerId: controllerId) { [weak self] bannerView in
-            self?.log("Received banner ad via callback")
             self?.onAdLoaded(bannerView)
         }
 
         // THEN check if ad is already loaded (from cache)
         if let existingBannerView = FlutterAdmobNativeAdsPlugin.shared()?.getBannerAd(controllerId: controllerId) {
-            log("Banner ad already loaded, adding to container immediately")
             onAdLoaded(existingBannerView)
         }
     }
 
     private func onAdLoaded(_ view: GADBannerView) {
-        log("Banner ad loaded, adding to container. Banner size: \(view.bounds.size)")
-
         // Remove old banner view if exists
         if let oldBanner = bannerView {
-            log("Removing old banner view")
             oldBanner.removeFromSuperview()
         }
 
@@ -76,8 +69,6 @@ class BannerAdPlatformView: NSObject, FlutterPlatformView {
             view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
         ])
-
-        log("Banner added to container with constraints. Container frame: \(containerView.bounds)")
     }
 
     private func log(_ message: String) {

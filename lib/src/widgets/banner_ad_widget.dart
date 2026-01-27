@@ -160,14 +160,6 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
     _controller.stateStream.listen((state) {
       if (!mounted) return;
 
-      if (widget.options.enableDebugLogs) {
-        debugPrint(
-          '[BannerAdWidget] State changed: ${state.name}, '
-          'isPreloaded: ${_controller.isPreloaded}, '
-          'isLoaded: ${_controller.isLoaded}',
-        );
-      }
-
       setState(() {
         _isLoading = state == BannerAdState.loading;
         _isReloading = state == BannerAdState.reloading;
@@ -222,13 +214,6 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
 
       // Update controller visibility state for reload logic
       _controller.updateVisibility(isNowVisible);
-
-      if (widget.options.enableDebugLogs) {
-        debugPrint(
-          '[BannerAdWidget] Visibility changed: $isNowVisible '
-          '(${(info.visibleFraction * 100).toStringAsFixed(0)}%)',
-        );
-      }
     }
   }
 
@@ -268,14 +253,6 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
   }
 
   Widget _buildContent() {
-    if (widget.options.enableDebugLogs) {
-      debugPrint(
-        '[BannerAdWidget] Building content: isLoading=$_isLoading, '
-        'isReloading=$_isReloading, hasError=$_hasError, '
-        'controllerState=${_controller.state.name}',
-      );
-    }
-
     // When reloading, keep showing the current ad (no shimmer flash)
     if (_isReloading) {
       return _buildPlatformView();
@@ -293,10 +270,6 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
   }
 
   Widget _buildLoadingState() {
-    if (widget.options.enableDebugLogs) {
-      debugPrint('[BannerAdWidget] Building loading state (shimmer)');
-    }
-
     if (widget.loadingWidget != null) {
       return widget.loadingWidget!;
     }
@@ -317,13 +290,6 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
   }
 
   Widget _buildPlatformView() {
-    if (widget.options.enableDebugLogs) {
-      debugPrint(
-        '[BannerAdWidget] Building platform view: controllerId=${_controller.id}, '
-        'isPreloaded=${_controller.isPreloaded}, isLoaded=${_controller.isLoaded}',
-      );
-    }
-
     final viewType = widget.options.size.viewType;
     final creationParams = {
       'controllerId': _controller.id,

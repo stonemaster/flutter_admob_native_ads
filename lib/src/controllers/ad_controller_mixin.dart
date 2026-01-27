@@ -155,10 +155,6 @@ mixin AdControllerMixin<TState> {
       preloadScheduler = scheduler;
       scheduler.initialize();
 
-      if (enableDebugLogs) {
-        debugPrint('[$controllerType] Smart preload initialized for $id');
-      }
-
       // Trigger initial evaluation
       scheduler.evaluateAndLoad();
     });
@@ -194,10 +190,6 @@ mixin AdControllerMixin<TState> {
     );
     reloadScheduler = scheduler;
     scheduler.initialize();
-
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Smart reload initialized for $id');
-    }
   }
 
   /// Updates the ad visibility state for reload logic.
@@ -206,10 +198,6 @@ mixin AdControllerMixin<TState> {
 
     isAdVisible = isVisible;
     reloadScheduler?.updateAdVisibility(isVisible);
-
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Visibility updated: $isVisible');
-    }
   }
 
   /// Updates the remote config reload interval.
@@ -220,9 +208,6 @@ mixin AdControllerMixin<TState> {
   /// Triggers a smart reload (visibility-aware with cache check).
   void triggerSmartReload() {
     if (optionsMap['enableSmartReload'] != true || reloadScheduler == null) {
-      if (enableDebugLogs) {
-        debugPrint('[$controllerType] Smart reload not enabled, using direct reload');
-      }
       reload();
       return;
     }
@@ -248,10 +233,6 @@ mixin AdControllerMixin<TState> {
 
     // Notify schedulers of state change
     preloadScheduler?.updateAdState(stateIndex);
-
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Performing reload: $id');
-    }
 
     try {
       await channel.invokeMethod(reloadMethodName, {
@@ -337,10 +318,6 @@ mixin AdControllerMixin<TState> {
       preloadCompleter!.complete(true);
       preloadCompleter = null;
     }
-
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Ad loaded: $id');
-    }
   }
 
   /// Handles ad load failure.
@@ -371,9 +348,6 @@ mixin AdControllerMixin<TState> {
   /// Handles ad click.
   void _handleAdClicked() {
     onAdClickedCallback();
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Ad clicked: $id');
-    }
   }
 
   /// Handles ad impression.
@@ -382,25 +356,16 @@ mixin AdControllerMixin<TState> {
     preloadScheduler?.onAdImpression();
 
     onAdImpressionCallback();
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Ad impression: $id');
-    }
   }
 
   /// Handles ad opened.
   void _handleAdOpened() {
     onAdOpenedCallback();
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Ad opened: $id');
-    }
   }
 
   /// Handles ad closed.
   void _handleAdClosed() {
     onAdClosedCallback();
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Ad closed: $id');
-    }
   }
 
   /// Handles ad paid event (banner ads only).
@@ -421,10 +386,6 @@ mixin AdControllerMixin<TState> {
     // Notify scheduler of state change
     preloadScheduler?.updateAdState(stateIndex);
 
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Loading ad: $id');
-    }
-
     try {
       await channel.invokeMethod(loadMethodName, {
         'controllerId': id,
@@ -443,9 +404,6 @@ mixin AdControllerMixin<TState> {
 
     // If smart preload enabled, let scheduler decide
     if (optionsMap['enableSmartPreload'] == true && preloadScheduler != null) {
-      if (enableDebugLogs) {
-        debugPrint('[$controllerType] Smart preload enabled, evaluating...');
-      }
       preloadScheduler!.evaluateAndLoad();
       return;
     }
@@ -481,10 +439,6 @@ mixin AdControllerMixin<TState> {
       throw StateError('Cannot reload ad: controller has been disposed');
     }
 
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Reloading ad: $id');
-    }
-
     await performReload();
   }
 
@@ -499,10 +453,6 @@ mixin AdControllerMixin<TState> {
     reloadScheduler?.dispose();
     lifecycleManager?.dispose();
     networkManager?.dispose();
-
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Disposing: $id');
-    }
 
     try {
       await channel.invokeMethod(disposeMethodName, {'controllerId': id});

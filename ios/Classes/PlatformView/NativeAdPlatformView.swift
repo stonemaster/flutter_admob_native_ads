@@ -63,8 +63,6 @@ class NativeAdPlatformView: NSObject, FlutterPlatformView {
             return
         }
 
-        log("Registering for ad updates for controller: \(controllerId)")
-
         // Register callback with plugin to receive ad when loaded
         FlutterAdmobNativeAdsPlugin.shared()?.registerAdLoadedCallback(controllerId: controllerId) { [weak self] nativeAd in
             self?.onAdLoaded(nativeAd)
@@ -72,11 +70,8 @@ class NativeAdPlatformView: NSObject, FlutterPlatformView {
     }
 
     private func onAdLoaded(_ nativeAd: GADNativeAd) {
-        log("Ad loaded, populating view with data")
-
         // Layout should already be built, just populate data
         if !isLayoutBuilt || nativeAdView == nil {
-            log("Layout not pre-built, building now")
             prebuildLayout()
         }
 
@@ -176,8 +171,6 @@ class NativeAdPlatformView: NSObject, FlutterPlatformView {
 
         // Register the native ad
         adView.nativeAd = nativeAd
-
-        log("Ad view populated successfully")
     }
 
     private func log(_ message: String) {
