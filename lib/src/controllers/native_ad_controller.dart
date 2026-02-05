@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../models/ad_state_base.dart';
@@ -52,8 +51,8 @@ class NativeAdController extends Object with AdControllerMixin<NativeAdState> {
   NativeAdController({
     required this.options,
     this.events = const NativeAdEvents(),
-  }) : _id = _generateId(),
-       _state = NativeAdState.initial {
+  })  : _id = _generateId(),
+        _state = NativeAdState.initial {
     // Register controller in global registry for method call dispatching
     _controllerRegistry.add(this);
 
@@ -191,7 +190,8 @@ class NativeAdController extends Object with AdControllerMixin<NativeAdState> {
   void Function() get onAdClickedCallback => () => events.onAdClicked?.call();
 
   @override
-  void Function() get onAdImpressionCallback => () => events.onAdImpression?.call();
+  void Function() get onAdImpressionCallback =>
+      () => events.onAdImpression?.call();
 
   @override
   void Function() get onAdOpenedCallback => () => events.onAdOpened?.call();

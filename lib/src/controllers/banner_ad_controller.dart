@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../models/ad_state_base.dart';
@@ -52,8 +51,8 @@ class BannerAdController extends Object with AdControllerMixin<BannerAdState> {
   BannerAdController({
     required this.options,
     this.events = const BannerAdEvents(),
-  }) : _id = _generateId(),
-       _state = BannerAdState.initial {
+  })  : _id = _generateId(),
+        _state = BannerAdState.initial {
     // Register controller in global registry for method call dispatching
     _bannerControllerRegistry.add(this);
 
@@ -191,7 +190,8 @@ class BannerAdController extends Object with AdControllerMixin<BannerAdState> {
   void Function() get onAdClickedCallback => () => events.onAdClicked?.call();
 
   @override
-  void Function() get onAdImpressionCallback => () => events.onAdImpression?.call();
+  void Function() get onAdImpressionCallback =>
+      () => events.onAdImpression?.call();
 
   @override
   void Function() get onAdOpenedCallback => () => events.onAdOpened?.call();
@@ -271,7 +271,8 @@ enum BannerAdState implements AdStateBase {
   bool get isLoading => this == BannerAdState.loading;
 
   @override
-  bool get isLoaded => this == BannerAdState.loaded || this == BannerAdState.reloading;
+  bool get isLoaded =>
+      this == BannerAdState.loaded || this == BannerAdState.reloading;
 
   @override
   bool get hasError => this == BannerAdState.error;
