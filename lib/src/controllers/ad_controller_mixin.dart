@@ -352,10 +352,45 @@ mixin AdControllerMixin<TState> {
 
   /// Handles ad impression.
   void _handleAdImpression() {
+    // Transition to "shown" state if the state enum supports it
+    // This allows tracking when an ad has actually been viewed
+    try {
+      final shownStateIdx = _getShownStateIndex();
+      if (shownStateIdx != null) {
+        state = stateFromIndex(shownStateIdx);
+        stateController.add(state);
+
+        if (enableDebugLogs) {
+          debugPrint('[$controllerType] Ad impression recorded, state → shown');
+        }
+      }
+    } catch (_) {
+      // State enum doesn't have a "shown" state (e.g., BannerAdState)
+      // This is expected, just continue with normal impression handling
+    }
+
     // Notify scheduler to start cooldown if smart preload enabled
     preloadScheduler?.onAdImpression();
 
     onAdImpressionCallback();
+  }
+
+  /// Gets the index of the "shown" state if it exists in the enum.
+  /// Returns null if the state enum doesn't have a "shown" state.
+  int? _getShownStateIndex() {
+    // Try to access state values to check if "shown" exists
+    try {
+      // We'll use reflection-like approach by trying to find shown state
+      // For NativeAdState, shown is at index 3
+      // For BannerAdState, there's no shown state
+      final stateName = state.toString();
+      if (stateName.contains('NativeAdState')) {
+        return 3; // NativeAdState.shown index
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Handles ad opened.

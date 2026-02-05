@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -122,6 +123,13 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
   String _errorMessage = '';
   bool _isVisible = false;
 
+  /// Timer for 1-second viewability duration check (audit fix #10).
+  Timer? _viewabilityTimer;
+  /// Timestamp when ad became visible for viewability check.
+  DateTime? _becameVisibleAt;
+  /// Last visible fraction value to detect transitions.
+  double _lastVisibleFraction = 0.0;
+
   /// Unique key for VisibilityDetector to avoid conflicts.
   late final Key _visibilityKey;
 
@@ -209,12 +217,41 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
   void _handleVisibilityChanged(VisibilityInfo info) {
     final isNowVisible = info.visibleFraction >= widget.visibilityThreshold;
 
-    if (_isVisible != isNowVisible) {
-      _isVisible = isNowVisible;
+    if (isNowVisible && _lastVisibleFraction < widget.visibilityThreshold) {
+      // Ad just became visible - start 1-second timer
+      _becameVisibleAt = DateTime.now();
 
-      // Update controller visibility state for reload logic
-      _controller.updateVisibility(isNowVisible);
+      // Cancel any existing timer
+      _viewabilityTimer?.cancel();
+
+      // Wait 1 second before confirming visibility (AdMob viewability standard)
+      _viewabilityTimer = Timer(const Duration(seconds: 1), () {
+        if (mounted && info.visibleFraction >= widget.visibilityThreshold) {
+          // Confirmed visible for 1 second - update controller
+          if (!_isVisible) {
+            _isVisible = true;
+            _controller.updateVisibility(true);
+
+            if (widget.options.enableDebugLogs) {
+              final visibleDuration = DateTime.now().difference(_becameVisibleAt!);
+              debugPrint('[BannerAdWidget] Ad confirmed visible for 1 second (actual: ${visibleDuration.inMilliseconds}ms)');
+            }
+          }
+        }
+      });
+
+    } else if (!isNowVisible) {
+      // Ad no longer visible - cancel timer and update controller
+      _viewabilityTimer?.cancel();
+      _becameVisibleAt = null;
+
+      if (_isVisible) {
+        _isVisible = false;
+        _controller.updateVisibility(false);
+      }
     }
+
+    _lastVisibleFraction = info.visibleFraction;
   }
 
   @override
@@ -229,6 +266,9 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
 
   @override
   void dispose() {
+    // Cancel viewability timer to prevent memory leaks
+    _viewabilityTimer?.cancel();
+
     if (_ownsController) {
       _controller.dispose();
     }

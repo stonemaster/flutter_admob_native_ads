@@ -8,6 +8,49 @@ protocol NativeAdLoaderDelegate: AnyObject {
     func adLoader(_ loader: NativeAdLoader, didFailWithError error: Error)
 }
 
+/// Represents a loaded native ad with its metadata.
+struct LoadedAd {
+    /// The native ad instance
+    let ad: GADNativeAd
+
+    /// Timestamp when the ad was loaded
+    let loadedAt: Date
+
+    /// The ad unit ID used to load this ad
+    let adUnitId: String
+
+    /// Returns the age of this ad (time since loaded) in seconds
+    var age: TimeInterval {
+        return Date().timeIntervalSince(loadedAt)
+    }
+
+    /// Returns the age of this ad in minutes
+    var ageInMinutes: Int {
+        return Int(age / 60)
+    }
+
+    /// Ad time-to-live in minutes (AdMob native ads expire after 60 minutes)
+    static let adTTLMinutes: Int = 60
+
+    /// Warning threshold for ad expiry in minutes
+    static let adExpiryWarningMinutes: Int = 55
+
+    /// Returns true if this ad has expired (age >= 60 minutes)
+    var isExpired: Bool {
+        return ageInMinutes >= LoadedAd.adTTLMinutes
+    }
+
+    /// Returns true if this ad is near expiry (age >= 55 minutes)
+    var isNearExpiry: Bool {
+        return ageInMinutes >= LoadedAd.adExpiryWarningMinutes
+    }
+
+    /// Returns the number of minutes until expiry (0 if already expired)
+    var minutesUntilExpiry: Int {
+        return max(0, LoadedAd.adTTLMinutes - ageInMinutes)
+    }
+}
+
 /// Handles loading native ads from AdMob.
 class NativeAdLoader: NSObject {
 
@@ -17,7 +60,13 @@ class NativeAdLoader: NSObject {
     private let enableDebugLogs: Bool
 
     private var adLoader: GADAdLoader?
-    private(set) var nativeAd: GADNativeAd?
+    private var loadedAd: LoadedAd?
+
+    /// Returns the currently loaded native ad (convenience property for backward compatibility)
+    private(set) var nativeAd: GADNativeAd? {
+        get { return loadedAd?.ad }
+        set { /* Use setLoadedAd instead */ }
+    }
 
     weak var delegate: NativeAdLoaderDelegate?
 
@@ -67,8 +116,49 @@ class NativeAdLoader: NSObject {
 
     /// Destroys the loader and releases resources.
     func destroy() {
-        nativeAd = nil
+        loadedAd = nil
         adLoader = nil
+    }
+
+    /// Gets the currently loaded native ad with TTL validation.
+    ///
+    /// Returns nil if:
+    /// - No ad has been loaded
+    /// - The ad has expired (age >= 60 minutes)
+    ///
+    /// Logs a warning if the ad is near expiry (age >= 55 minutes).
+    ///
+    /// - Returns: The native ad if valid, nil otherwise
+    func getNativeAd() -> GADNativeAd? {
+        guard let cached = loadedAd else { return nil }
+
+        // Check if ad has expired
+        if cached.isExpired {
+            log("Ad expired (age: \(cached.ageInMinutes)min)")
+            loadedAd = nil
+            return nil
+        }
+
+        // Warn if ad is near expiry
+        if cached.isNearExpiry {
+            log("WARNING: Ad near expiry (\(cached.minutesUntilExpiry)min remaining)")
+        }
+
+        return cached.ad
+    }
+
+    /// Gets the age of the currently loaded ad.
+    ///
+    /// - Returns: The age of the ad in seconds, or nil if no ad is loaded
+    func getAdAge() -> TimeInterval? {
+        return loadedAd?.age
+    }
+
+    /// Gets the number of minutes until the ad expires.
+    ///
+    /// - Returns: Minutes until expiry, or nil if no ad is loaded
+    func getMinutesUntilExpiry() -> Int? {
+        return loadedAd?.minutesUntilExpiry
     }
 
     // MARK: - Private Methods
@@ -109,7 +199,13 @@ extension NativeAdLoader: GADAdLoaderDelegate {
 extension NativeAdLoader: GADNativeAdLoaderDelegate {
 
     func adLoader(_ adLoader: GADAdLoader, didReceive nativeAd: GADNativeAd) {
-        self.nativeAd = nativeAd
+        // Store new ad with timestamp
+        loadedAd = LoadedAd(
+            ad: nativeAd,
+            loadedAt: Date(),
+            adUnitId: adUnitId
+        )
+
         nativeAd.delegate = self
 
         sendEvent("onAdLoaded", arguments: [

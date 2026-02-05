@@ -13,14 +13,21 @@ import 'ad_controller_mixin.dart';
 
 export 'native_ad_controller.dart' show NativeAdState;
 
-/// Global registry of all active controllers for method call dispatching
-final _controllerRegistry = <NativeAdController>[];
+/// Global registry of all active controllers for method call dispatching.
+/// Changed from List to Map for O(1) lookup performance (audit fix #9).
+final _controllerRegistry = <String, NativeAdController>{};
 
-/// Global method call handler that dispatches events to all controllers
+/// Global method call handler that dispatches events to the target controller.
+/// Changed from O(N) iteration to O(1) direct lookup (audit fix #9).
 Future<dynamic> _globalMethodCallHandler(MethodCall call) async {
-  // Dispatch the call to all controllers
-  for (final controller in _controllerRegistry) {
-    await controller.handleMethodCall(call);
+  // Extract controllerId from arguments for direct lookup
+  final controllerId = call.arguments?['controllerId'] as String?;
+
+  if (controllerId != null) {
+    final controller = _controllerRegistry[controllerId];
+    if (controller != null) {
+      await controller.handleMethodCall(call);
+    }
   }
 }
 
@@ -54,7 +61,8 @@ class NativeAdController extends Object with AdControllerMixin<NativeAdState> {
   })  : _id = _generateId(),
         _state = NativeAdState.initial {
     // Register controller in global registry for method call dispatching
-    _controllerRegistry.add(this);
+    // Changed from List.add to Map assignment for O(1) performance
+    _controllerRegistry[_id] = this;
 
     // Set up global handler only once (first controller)
     if (!_globalHandlerInitialized) {
@@ -251,7 +259,8 @@ class NativeAdController extends Object with AdControllerMixin<NativeAdState> {
   @override
   Future<void> dispose() async {
     // Unregister from global registry
-    _controllerRegistry.remove(this);
+    // Changed from List.remove to Map.remove for O(1) performance
+    _controllerRegistry.remove(_id);
 
     // If this was the last controller, clear the global handler
     if (_controllerRegistry.isEmpty) {
@@ -274,6 +283,9 @@ enum NativeAdState implements AdStateBase {
   /// Ad has been loaded successfully.
   loaded,
 
+  /// Ad has been shown and impression recorded.
+  shown,
+
   /// Ad failed to load.
   error;
 
@@ -281,7 +293,8 @@ enum NativeAdState implements AdStateBase {
   bool get isLoading => this == NativeAdState.loading;
 
   @override
-  bool get isLoaded => this == NativeAdState.loaded;
+  bool get isLoaded =>
+      this == NativeAdState.loaded || this == NativeAdState.shown;
 
   @override
   bool get hasError => this == NativeAdState.error;

@@ -54,9 +54,9 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
     private var loadedBannerAds: [String: GADBannerView] = [:]
 
     /// Gets the preloaded native ad for the given controller ID.
-    /// Returns nil if no ad is loaded for the controller.
+    /// Returns nil if no ad is loaded for the controller or if the ad has expired.
     public func getPreloadedAd(controllerId: String) -> GADNativeAd? {
-        return adLoaders[controllerId]?.nativeAd
+        return adLoaders[controllerId]?.getNativeAd()
     }
 
     /// Registers a callback to be invoked when an ad is loaded for the given controller.
