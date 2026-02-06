@@ -74,20 +74,24 @@ class NativeAdPlatformView(
             return
         }
 
-        log("Registering for ad updates for controller: $controllerId")
+        val plugin = FlutterAdmobNativeAdsPlugin.getInstance()
 
-        // Register callback with plugin to receive ad when loaded
-        FlutterAdmobNativeAdsPlugin.getInstance()?.registerAdLoadedCallback(controllerId) { nativeAd ->
+        // Register callback FIRST to avoid missing ads that load between check and register
+        plugin?.registerAdLoadedCallback(controllerId) { nativeAd ->
             onAdLoaded(nativeAd)
+        }
+
+        // THEN check if ad is already loaded (from cache/previous load)
+        val existingAd = plugin?.getPreloadedAd(controllerId)
+        if (existingAd != null) {
+            log("Native ad already loaded, populating view immediately")
+            onAdLoaded(existingAd)
         }
     }
 
     private fun onAdLoaded(nativeAd: NativeAd) {
-        log("Ad loaded, populating view with data")
-
         // Layout should already be built, just populate data
         if (!isLayoutBuilt || nativeAdView == null) {
-            log("Layout not pre-built, building now")
             prebuildLayout()
         }
 

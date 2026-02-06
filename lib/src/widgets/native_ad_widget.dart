@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -131,6 +132,13 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
   String _errorMessage = '';
   bool _isVisible = false;
 
+  /// Timer for 1-second viewability duration check (audit fix #10).
+  Timer? _viewabilityTimer;
+  /// Timestamp when ad became visible for viewability check.
+  DateTime? _becameVisibleAt;
+  /// Last visible fraction value to detect transitions.
+  double _lastVisibleFraction = 0.0;
+
   /// Unique key for VisibilityDetector to avoid conflicts.
   late final Key _visibilityKey;
 
@@ -174,20 +182,14 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
     _controller.stateStream.listen((state) {
       if (!mounted) return;
 
-      if (widget.options.enableDebugLogs) {
-        debugPrint(
-          '[NativeAdWidget] State changed: ${state.name}, '
-          'isPreloaded: ${_controller.isPreloaded}, '
-          'isLoaded: ${_controller.isLoaded}',
-        );
-      }
-
       setState(() {
         _isLoading = state == NativeAdState.loading;
         _hasError = state == NativeAdState.error;
         if (_hasError) {
           _errorMessage = _controller.errorMessage ?? 'Unknown error';
         }
+        // Note: Both "loaded" and "shown" states show the platform view
+        // The "shown" state indicates an impression was recorded
       });
     });
 
@@ -232,28 +234,46 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
 
     // Notify parent widget that cached ad is ready
     widget.onCachedAdReady?.call();
-
-    if (widget.options.enableDebugLogs) {
-      debugPrint('[NativeAdWidget] Cached ad ready, notifying parent');
-    }
   }
 
   void _handleVisibilityChanged(VisibilityInfo info) {
     final isNowVisible = info.visibleFraction >= widget.visibilityThreshold;
 
-    if (_isVisible != isNowVisible) {
-      _isVisible = isNowVisible;
+    if (isNowVisible && _lastVisibleFraction < widget.visibilityThreshold) {
+      // Ad just became visible - start 1-second timer
+      _becameVisibleAt = DateTime.now();
 
-      // Update controller visibility state for reload logic
-      _controller.updateVisibility(isNowVisible);
+      // Cancel any existing timer
+      _viewabilityTimer?.cancel();
 
-      if (widget.options.enableDebugLogs) {
-        debugPrint(
-          '[NativeAdWidget] Visibility changed: $isNowVisible '
-          '(${(info.visibleFraction * 100).toStringAsFixed(0)}%)',
-        );
+      // Wait 1 second before confirming visibility (AdMob viewability standard)
+      _viewabilityTimer = Timer(const Duration(seconds: 1), () {
+        if (mounted && info.visibleFraction >= widget.visibilityThreshold) {
+          // Confirmed visible for 1 second - update controller
+          if (!_isVisible) {
+            _isVisible = true;
+            _controller.updateVisibility(true);
+
+            if (widget.options.enableDebugLogs) {
+              final visibleDuration = DateTime.now().difference(_becameVisibleAt!);
+              debugPrint('[NativeAdWidget] Ad confirmed visible for 1 second (actual: ${visibleDuration.inMilliseconds}ms)');
+            }
+          }
+        }
+      });
+
+    } else if (!isNowVisible) {
+      // Ad no longer visible - cancel timer and update controller
+      _viewabilityTimer?.cancel();
+      _becameVisibleAt = null;
+
+      if (_isVisible) {
+        _isVisible = false;
+        _controller.updateVisibility(false);
       }
     }
+
+    _lastVisibleFraction = info.visibleFraction;
   }
 
   @override
@@ -273,6 +293,9 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
 
   @override
   void dispose() {
+    // Cancel viewability timer to prevent memory leaks
+    _viewabilityTimer?.cancel();
+
     if (_ownsController) {
       _controller.dispose();
     }
@@ -297,13 +320,6 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
   }
 
   Widget _buildContent() {
-    if (widget.options.enableDebugLogs) {
-      debugPrint(
-        '[NativeAdWidget] Building content: isLoading=$_isLoading, '
-        'hasError=$_hasError, controllerState=${_controller.state.name}',
-      );
-    }
-
     if (_isLoading) {
       return _buildLoadingState();
     }
@@ -316,10 +332,6 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
   }
 
   Widget _buildLoadingState() {
-    if (widget.options.enableDebugLogs) {
-      debugPrint('[NativeAdWidget] Building loading state (shimmer)');
-    }
-
     if (widget.loadingWidget != null) {
       return widget.loadingWidget!;
     }
@@ -339,13 +351,6 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
   }
 
   Widget _buildPlatformView() {
-    if (widget.options.enableDebugLogs) {
-      debugPrint(
-        '[NativeAdWidget] Building platform view: controllerId=${_controller.id}, '
-        'isPreloaded=${_controller.isPreloaded}, isLoaded=${_controller.isLoaded}',
-      );
-    }
-
     final viewType = widget.options.layoutType.viewType;
     final creationParams = {
       'controllerId': _controller.id,
@@ -385,9 +390,7 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
   }
 
   void _onPlatformViewCreated(int id) {
-    if (widget.options.enableDebugLogs) {
-      debugPrint('[NativeAdWidget] Platform view created: $id');
-    }
+    // Platform view created successfully
   }
 }
 

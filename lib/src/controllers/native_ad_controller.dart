@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../models/ad_state_base.dart';
@@ -14,14 +13,21 @@ import 'ad_controller_mixin.dart';
 
 export 'native_ad_controller.dart' show NativeAdState;
 
-/// Global registry of all active controllers for method call dispatching
-final _controllerRegistry = <NativeAdController>[];
+/// Global registry of all active controllers for method call dispatching.
+/// Changed from List to Map for O(1) lookup performance (audit fix #9).
+final _controllerRegistry = <String, NativeAdController>{};
 
-/// Global method call handler that dispatches events to all controllers
+/// Global method call handler that dispatches events to the target controller.
+/// Changed from O(N) iteration to O(1) direct lookup (audit fix #9).
 Future<dynamic> _globalMethodCallHandler(MethodCall call) async {
-  // Dispatch the call to all controllers
-  for (final controller in _controllerRegistry) {
-    await controller.handleMethodCall(call);
+  // Extract controllerId from arguments for direct lookup
+  final controllerId = call.arguments?['controllerId'] as String?;
+
+  if (controllerId != null) {
+    final controller = _controllerRegistry[controllerId];
+    if (controller != null) {
+      await controller.handleMethodCall(call);
+    }
   }
 }
 
@@ -52,10 +58,11 @@ class NativeAdController extends Object with AdControllerMixin<NativeAdState> {
   NativeAdController({
     required this.options,
     this.events = const NativeAdEvents(),
-  }) : _id = _generateId(),
-       _state = NativeAdState.initial {
+  })  : _id = _generateId(),
+        _state = NativeAdState.initial {
     // Register controller in global registry for method call dispatching
-    _controllerRegistry.add(this);
+    // Changed from List.add to Map assignment for O(1) performance
+    _controllerRegistry[_id] = this;
 
     // Set up global handler only once (first controller)
     if (!_globalHandlerInitialized) {
@@ -191,7 +198,8 @@ class NativeAdController extends Object with AdControllerMixin<NativeAdState> {
   void Function() get onAdClickedCallback => () => events.onAdClicked?.call();
 
   @override
-  void Function() get onAdImpressionCallback => () => events.onAdImpression?.call();
+  void Function() get onAdImpressionCallback =>
+      () => events.onAdImpression?.call();
 
   @override
   void Function() get onAdOpenedCallback => () => events.onAdOpened?.call();
@@ -208,18 +216,12 @@ class NativeAdController extends Object with AdControllerMixin<NativeAdState> {
 
   @override
   Future<void> showCachedAd() async {
-    if (enableDebugLogs) {
-      debugPrint('[NativeAdController] Showing cached ad from preload');
-    }
     events.onCachedAdReady?.call();
   }
 
   @override
   Future<void> triggerPreloadForCache() async {
     if (_preloadedAdController != null && !_preloadedAdController!.isDisposed) {
-      if (enableDebugLogs) {
-        debugPrint('[NativeAdController] Triggering preload for next cache');
-      }
       _preloadedAdController!.preload();
     }
   }
@@ -247,9 +249,6 @@ class NativeAdController extends Object with AdControllerMixin<NativeAdState> {
   /// it will be shown immediately instead of requesting a new ad.
   void setPreloadedAdController(NativeAdController? controller) {
     _preloadedAdController = controller;
-    if (enableDebugLogs) {
-      debugPrint('[NativeAdController] Preloaded controller set: ${controller?.id}');
-    }
   }
 
   /// Updates the event callbacks.
@@ -260,7 +259,8 @@ class NativeAdController extends Object with AdControllerMixin<NativeAdState> {
   @override
   Future<void> dispose() async {
     // Unregister from global registry
-    _controllerRegistry.remove(this);
+    // Changed from List.remove to Map.remove for O(1) performance
+    _controllerRegistry.remove(_id);
 
     // If this was the last controller, clear the global handler
     if (_controllerRegistry.isEmpty) {
@@ -283,6 +283,9 @@ enum NativeAdState implements AdStateBase {
   /// Ad has been loaded successfully.
   loaded,
 
+  /// Ad has been shown and impression recorded.
+  shown,
+
   /// Ad failed to load.
   error;
 
@@ -290,7 +293,8 @@ enum NativeAdState implements AdStateBase {
   bool get isLoading => this == NativeAdState.loading;
 
   @override
-  bool get isLoaded => this == NativeAdState.loaded;
+  bool get isLoaded =>
+      this == NativeAdState.loaded || this == NativeAdState.shown;
 
   @override
   bool get hasError => this == NativeAdState.error;

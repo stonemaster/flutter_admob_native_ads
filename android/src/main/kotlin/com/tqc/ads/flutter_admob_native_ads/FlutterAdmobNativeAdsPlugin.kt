@@ -50,93 +50,87 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
         @Volatile
         private var instance: FlutterAdmobNativeAdsPlugin? = null
 
+        // Static maps to persist across plugin instances (handle multiple onAttachedToEngine calls)
+        private val adLoaders = mutableMapOf<String, NativeAdLoader>()
+        private val adLoadedCallbacks = mutableMapOf<String, MutableList<(NativeAd) -> Unit>>()
+        private val bannerAdLoaders = mutableMapOf<String, BannerAdLoader>()
+        private val bannerAdCallbacks = mutableMapOf<String, (AdView) -> Unit>()
+        private val loadedBannerAds = mutableMapOf<String, AdView>()
+
         fun getInstance(): FlutterAdmobNativeAdsPlugin? = instance
+
+        fun getAdLoaders(): Map<String, NativeAdLoader> = adLoaders
+        fun setAdLoader(controllerId: String, loader: NativeAdLoader) {
+            adLoaders[controllerId] = loader
+        }
+        fun removeAdLoader(controllerId: String) {
+            adLoaders.remove(controllerId)
+        }
+        fun getAdLoader(controllerId: String): NativeAdLoader? = adLoaders[controllerId]
+
+        fun getBannerAdLoaders(): Map<String, BannerAdLoader> = bannerAdLoaders
+        fun setBannerAdLoader(controllerId: String, loader: BannerAdLoader) {
+            bannerAdLoaders[controllerId] = loader
+        }
+        fun removeBannerAdLoader(controllerId: String) {
+            bannerAdLoaders.remove(controllerId)
+        }
+        fun getLoadedBannerAd(controllerId: String): AdView? = loadedBannerAds[controllerId]
+        fun setLoadedBannerAd(controllerId: String, adView: AdView) {
+            loadedBannerAds[controllerId] = adView
+        }
+
+        fun registerNativeAdCallback(controllerId: String, callback: (NativeAd) -> Unit) {
+            val callbacks = adLoadedCallbacks.getOrPut(controllerId) { mutableListOf() }
+            callbacks.add(callback)
+        }
+
+        fun getNativeAdCallbacks(controllerId: String): MutableList<(NativeAd) -> Unit>? {
+            return adLoadedCallbacks[controllerId]
+        }
+
+        fun clearNativeAdCallbacks(controllerId: String) {
+            adLoadedCallbacks.remove(controllerId)
+        }
+
+        fun invokeNativeAdCallbacks(controllerId: String, nativeAd: NativeAd) {
+            adLoadedCallbacks[controllerId]?.forEach { callback ->
+                try {
+                    callback(nativeAd)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error invoking ad loaded callback for controller: $controllerId", e)
+                }
+            }
+        }
+
+        fun registerBannerAdCallback(controllerId: String, callback: (AdView) -> Unit) {
+            bannerAdCallbacks[controllerId] = callback
+        }
+
+        fun invokeBannerAdCallback(controllerId: String, adView: AdView) {
+            bannerAdCallbacks[controllerId]?.invoke(adView)
+        }
+
+        fun clearBannerAdCallback(controllerId: String) {
+            bannerAdCallbacks.remove(controllerId)
+        }
+
+        fun clearAllAdLoaders() {
+            adLoaders.values.forEach { it.destroy() }
+            adLoaders.clear()
+        }
+
+        fun clearAllBannerAdLoaders() {
+            bannerAdLoaders.values.forEach { it.destroy() }
+            bannerAdLoaders.clear()
+            loadedBannerAds.clear()
+        }
     }
 
     private lateinit var channel: MethodChannel
     private lateinit var bannerChannel: MethodChannel
     private lateinit var context: Context
     private lateinit var messenger: BinaryMessenger
-
-    // Registry of active ad loaders by controller ID
-    private val adLoaders = mutableMapOf<String, NativeAdLoader>()
-
-    // Registry of ad loaded callbacks by controller ID (for platform views)
-    // Changed to support multiple callbacks per controllerId (List instead of single callback)
-    private val adLoadedCallbacks = mutableMapOf<String, MutableList<(NativeAd) -> Unit>>()
-
-    // Registry of active banner ad loaders by controller ID
-    private val bannerAdLoaders = mutableMapOf<String, BannerAdLoader>()
-
-    // Registry of banner ad loaded callbacks by controller ID (for platform views)
-    private val bannerAdCallbacks = mutableMapOf<String, (AdView) -> Unit>()
-
-    /**
-     * Gets the preloaded native ad for the given controller ID.
-     * Returns null if no ad is loaded for the controller.
-     */
-    fun getPreloadedAd(controllerId: String): NativeAd? {
-        return adLoaders[controllerId]?.getNativeAd()
-    }
-
-    /**
-     * Registers a callback to be invoked when an ad is loaded for the given controller.
-     * This allows platform views to receive ads without creating their own loaders.
-     *
-     * Supports multiple callbacks for the same controllerId (e.g., multiple widgets
-     * sharing the same controller).
-     */
-    fun registerAdLoadedCallback(controllerId: String, callback: (NativeAd) -> Unit) {
-        val callbacks = adLoadedCallbacks.getOrPut(controllerId) { mutableListOf() }
-        callbacks.add(callback)
-
-        Log.d(TAG, "Registered callback for controller: $controllerId. Total callbacks: ${callbacks.size}")
-        if (callbacks.size > 1) {
-            Log.w(TAG, "⚠️ WARNING: Multiple callbacks registered for controller: $controllerId. " +
-                    "This may indicate multiple widgets are sharing the same controller. " +
-                    "Each widget should have its own NativeAdController instance.")
-        }
-
-        // If ad is already loaded, invoke callback immediately
-        getPreloadedAd(controllerId)?.let { ad ->
-            callback(ad)
-        }
-    }
-
-    /**
-     * Unregisters the ad loaded callback for the given controller.
-     */
-    fun unregisterAdLoadedCallback(controllerId: String) {
-        adLoadedCallbacks.remove(controllerId)
-    }
-
-    /**
-     * Gets the preloaded banner ad view for the given controller ID.
-     * Returns null if no ad is loaded for the controller.
-     */
-    fun getBannerAd(controllerId: String): AdView? {
-        return bannerAdLoaders[controllerId]?.getAdView()
-    }
-
-    /**
-     * Registers a callback to be invoked when a banner ad is loaded for the given controller.
-     * This allows platform views to receive ads without creating their own loaders.
-     */
-    fun registerBannerAdCallback(controllerId: String, callback: (AdView) -> Unit) {
-        bannerAdCallbacks[controllerId] = callback
-
-        // If ad is already loaded, invoke callback immediately
-        getBannerAd(controllerId)?.let { adView ->
-            callback(adView)
-        }
-    }
-
-    /**
-     * Unregisters the banner ad loaded callback for the given controller.
-     */
-    fun unregisterBannerAdCallback(controllerId: String) {
-        bannerAdCallbacks.remove(controllerId)
-    }
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         Log.d(TAG, "Plugin attached to engine")
@@ -218,6 +212,79 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
         Log.d(TAG, "Platform view factories registered: Form1-Form12, Banner")
     }
 
+    /**
+     * Gets the preloaded native ad for the given controller ID.
+     * Returns null if no ad is loaded for the controller.
+     */
+    fun getPreloadedAd(controllerId: String): NativeAd? {
+        val loader = getAdLoader(controllerId)
+        val ad = loader?.getNativeAd()
+
+        Log.d(TAG, "getPreloadedAd($controllerId): loader exists=${loader != null}, ad=$ad")
+
+        return ad
+    }
+
+    /**
+     * Registers a callback to be invoked when an ad is loaded for the given controller.
+     * This allows platform views to receive ads without creating their own loaders.
+     *
+     * Supports multiple callbacks for the same controllerId (e.g., multiple widgets
+     * sharing the same controller).
+     */
+    fun registerAdLoadedCallback(controllerId: String, callback: (NativeAd) -> Unit) {
+        registerNativeAdCallback(controllerId, callback)
+
+        Log.d(TAG, "Registered callback for controller: $controllerId")
+
+        // If ad is already loaded, invoke callback immediately
+        getPreloadedAd(controllerId)?.let { ad ->
+            callback(ad)
+        }
+    }
+
+    /**
+     * Unregisters the ad loaded callback for the given controller.
+     */
+    fun unregisterAdLoadedCallback(controllerId: String) {
+        clearNativeAdCallbacks(controllerId)
+    }
+
+    /**
+     * Gets the preloaded banner ad view for the given controller ID.
+     * Returns null if no ad is loaded for the controller.
+     * Checks the cache first, then falls back to the loader.
+     */
+    fun getBannerAd(controllerId: String): AdView? {
+        val fromCache = getLoadedBannerAd(controllerId)
+        val fromLoader = getBannerAdLoaders()[controllerId]?.getAdView()
+
+        Log.d(TAG, "getBannerAd($controllerId): fromCache=$fromCache, fromLoader=$fromLoader")
+
+        return fromCache ?: fromLoader
+    }
+
+    /**
+     * Registers a callback to be invoked when a banner ad is loaded for the given controller.
+     * This allows platform views to receive ads without creating their own loaders.
+     */
+    fun registerBannerAdCallback(controllerId: String, callback: (AdView) -> Unit) {
+        // Call companion object method
+        Companion.registerBannerAdCallback(controllerId, callback)
+
+        // If ad is already loaded, invoke callback immediately
+        getBannerAd(controllerId)?.let { adView ->
+            callback(adView)
+        }
+    }
+
+    /**
+     * Unregisters the banner ad loaded callback for the given controller.
+     */
+    fun unregisterBannerAdCallback(controllerId: String) {
+        clearBannerAdCallback(controllerId)
+    }
+
     override fun onMethodCall(call: MethodCall, result: Result) {
         when (call.method) {
             "loadAd" -> handleLoadAd(call, result)
@@ -241,8 +308,6 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
             return
         }
 
-        Log.d(TAG, "Loading ad for controller: $controllerId")
-
         @Suppress("UNCHECKED_CAST")
         val testDeviceIds = call.argument<List<String>>("testDeviceIds")
 
@@ -258,17 +323,10 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
 
         // Set callback to notify registered platform views
         loader.setOnAdLoadedCallback { nativeAd ->
-            // Invoke ALL registered callbacks for this controllerId
-            adLoadedCallbacks[controllerId]?.forEach { callback ->
-                try {
-                    callback(nativeAd)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error invoking ad loaded callback for controller: $controllerId", e)
-                }
-            }
+            invokeNativeAdCallbacks(controllerId, nativeAd)
         }
 
-        adLoaders[controllerId] = loader
+        setAdLoader(controllerId, loader)
         loader.loadAd()
 
         result.success(null)
@@ -284,10 +342,8 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
             return
         }
 
-        Log.d(TAG, "Reloading ad for controller: $controllerId")
-
         // Destroy existing loader
-        adLoaders[controllerId]?.destroy()
+        getAdLoader(controllerId)?.destroy()
 
         @Suppress("UNCHECKED_CAST")
         val testDeviceIds = call.argument<List<String>>("testDeviceIds")
@@ -304,17 +360,10 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
 
         // Set callback to notify registered platform views
         loader.setOnAdLoadedCallback { nativeAd ->
-            // Invoke ALL registered callbacks for this controllerId
-            adLoadedCallbacks[controllerId]?.forEach { callback ->
-                try {
-                    callback(nativeAd)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error invoking ad loaded callback for controller: $controllerId", e)
-                }
-            }
+            invokeNativeAdCallbacks(controllerId, nativeAd)
         }
 
-        adLoaders[controllerId] = loader
+        setAdLoader(controllerId, loader)
         loader.loadAd()
 
         result.success(null)
@@ -328,10 +377,8 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
             return
         }
 
-        Log.d(TAG, "Disposing ad for controller: $controllerId")
-
-        adLoaders[controllerId]?.destroy()
-        adLoaders.remove(controllerId)
+        getAdLoader(controllerId)?.destroy()
+        removeAdLoader(controllerId)
 
         result.success(null)
     }
@@ -348,8 +395,6 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
             return
         }
 
-        Log.d(TAG, "Loading banner ad for controller: $controllerId")
-
         val adSize = BannerAdSizeExtensions.getAdSize(sizeIndex, context, customHeight)
 
         val loader = BannerAdLoader(
@@ -362,10 +407,11 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
         )
 
         loader.setOnAdLoadedCallback { adView ->
-            bannerAdCallbacks[controllerId]?.invoke(adView)
+            setLoadedBannerAd(controllerId, adView)
+            invokeBannerAdCallback(controllerId, adView)
         }
 
-        bannerAdLoaders[controllerId] = loader
+        setBannerAdLoader(controllerId, loader)
         loader.loadAd()
 
         result.success(null)
@@ -383,10 +429,7 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
             return
         }
 
-        Log.d(TAG, "Reloading banner ad for controller: $controllerId")
-
-        // Destroy existing loader
-        bannerAdLoaders[controllerId]?.destroy()
+        getBannerAdLoaders()[controllerId]?.destroy()
 
         val adSize = BannerAdSizeExtensions.getAdSize(sizeIndex, context, customHeight)
 
@@ -400,10 +443,11 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
         )
 
         loader.setOnAdLoadedCallback { adView ->
-            bannerAdCallbacks[controllerId]?.invoke(adView)
+            setLoadedBannerAd(controllerId, adView)
+            invokeBannerAdCallback(controllerId, adView)
         }
 
-        bannerAdLoaders[controllerId] = loader
+        setBannerAdLoader(controllerId, loader)
         loader.loadAd()
 
         result.success(null)
@@ -417,28 +461,20 @@ class FlutterAdmobNativeAdsPlugin : FlutterPlugin, MethodCallHandler {
             return
         }
 
-        Log.d(TAG, "Disposing banner ad for controller: $controllerId")
-
-        bannerAdLoaders[controllerId]?.destroy()
-        bannerAdLoaders.remove(controllerId)
-        bannerAdCallbacks.remove(controllerId)
+        getBannerAdLoaders()[controllerId]?.destroy()
+        removeBannerAdLoader(controllerId)
+        clearBannerAdCallback(controllerId)
 
         result.success(null)
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        Log.d(TAG, "Plugin detached from engine")
-
         channel.setMethodCallHandler(null)
         bannerChannel.setMethodCallHandler(null)
 
         // Clean up all loaders
-        adLoaders.values.forEach { it.destroy() }
-        adLoaders.clear()
-
-        // Clean up all banner loaders
-        bannerAdLoaders.values.forEach { it.destroy() }
-        bannerAdLoaders.clear()
+        clearAllAdLoaders()
+        clearAllBannerAdLoaders()
 
         instance = null
     }

@@ -10,6 +10,8 @@ import com.google.android.gms.ads.nativead.NativeAd
 import com.google.android.gms.ads.nativead.NativeAdOptions
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
+import java.time.Duration
+import java.time.Instant
 
 /**
  * Handles loading native ads from AdMob.
@@ -25,10 +27,60 @@ class NativeAdLoader(
     companion object {
         private const val TAG = "NativeAdLoader"
         private const val CHANNEL_NAME = "flutter_admob_native_ads"
+
+        /**
+         * Ad time-to-live (TTL) in minutes.
+         * AdMob native ads typically expire after 60 minutes.
+         */
+        private const val AD_TTL_MINUTES = 60L
+
+        /**
+         * Warning threshold for ad expiry (in minutes).
+         * Log a warning when ad is within 5 minutes of expiry.
+         */
+        private const val AD_EXPIRY_WARNING_MINUTES = 55L
+    }
+
+    /**
+     * Data class representing a loaded ad with its metadata.
+     *
+     * @property ad The native ad instance
+     * @property loadedAt Timestamp when the ad was loaded
+     * @property adUnitId The ad unit ID used to load this ad
+     */
+    data class LoadedAd(
+        val ad: NativeAd,
+        val loadedAt: Instant = Instant.now(),
+        val adUnitId: String
+    ) {
+        /**
+         * Returns the age of this ad (time since loaded).
+         */
+        val age: Duration
+            get() = Duration.between(loadedAt, Instant.now())
+
+        /**
+         * Returns true if this ad has expired (age >= 60 minutes).
+         */
+        val isExpired: Boolean
+            get() = age.toMinutes() >= AD_TTL_MINUTES
+
+        /**
+         * Returns true if this ad is near expiry (age >= 55 minutes).
+         */
+        val isNearExpiry: Boolean
+            get() = age.toMinutes() >= AD_EXPIRY_WARNING_MINUTES
+
+        /**
+         * Returns the number of minutes until expiry.
+         * Returns 0 if already expired.
+         */
+        val minutesUntilExpiry: Long
+            get() = maxOf(0, AD_TTL_MINUTES - age.toMinutes())
     }
 
     private var adLoader: AdLoader? = null
-    private var nativeAd: NativeAd? = null
+    private var loadedAd: LoadedAd? = null
     private var onAdLoadedCallback: ((NativeAd) -> Unit)? = null
 
     private val channel: MethodChannel = MethodChannel(messenger, CHANNEL_NAME)
@@ -44,13 +96,17 @@ class NativeAdLoader(
      * Loads a native ad.
      */
     fun loadAd() {
-        log("Loading ad for unit: $adUnitId")
-
         val adLoaderBuilder = AdLoader.Builder(context, adUnitId)
             .forNativeAd { ad ->
-                log("Native ad received")
-                nativeAd?.destroy()
-                nativeAd = ad
+                // Destroy old ad if exists
+                loadedAd?.ad?.destroy()
+
+                // Store new ad with timestamp
+                loadedAd = LoadedAd(
+                    ad = ad,
+                    adUnitId = adUnitId
+                )
+
                 onAdLoadedCallback?.invoke(ad)
                 sendEvent("onAdLoaded", mapOf("controllerId" to controllerId))
             }
@@ -65,22 +121,18 @@ class NativeAdLoader(
                 }
 
                 override fun onAdClicked() {
-                    log("Ad clicked")
                     sendEvent("onAdClicked", mapOf("controllerId" to controllerId))
                 }
 
                 override fun onAdImpression() {
-                    log("Ad impression recorded")
                     sendEvent("onAdImpression", mapOf("controllerId" to controllerId))
                 }
 
                 override fun onAdOpened() {
-                    log("Ad opened")
                     sendEvent("onAdOpened", mapOf("controllerId" to controllerId))
                 }
 
                 override fun onAdClosed() {
-                    log("Ad closed")
                     sendEvent("onAdClosed", mapOf("controllerId" to controllerId))
                 }
             })
@@ -104,17 +156,58 @@ class NativeAdLoader(
     }
 
     /**
-     * Gets the currently loaded native ad.
+     * Gets the currently loaded native ad with TTL validation.
+     *
+     * Returns null if:
+     * - No ad has been loaded
+     * - The ad has expired (age >= 60 minutes)
+     *
+     * Logs a warning if the ad is near expiry (age >= 55 minutes).
+     *
+     * @return The native ad if valid, null otherwise
      */
-    fun getNativeAd(): NativeAd? = nativeAd
+    fun getNativeAd(): NativeAd? {
+        val cached = loadedAd ?: return null
+
+        // Check if ad has expired
+        if (cached.isExpired) {
+            log("Ad expired (age: ${cached.age.toMinutes()}min)")
+            loadedAd = null
+            return null
+        }
+
+        // Warn if ad is near expiry
+        if (cached.isNearExpiry) {
+            log("WARNING: Ad near expiry (${cached.minutesUntilExpiry}min remaining)")
+        }
+
+        return cached.ad
+    }
+
+    /**
+     * Gets the age of the currently loaded ad.
+     *
+     * @return The age of the ad, or null if no ad is loaded
+     */
+    fun getAdAge(): Duration? {
+        return loadedAd?.age
+    }
+
+    /**
+     * Gets the number of minutes until the ad expires.
+     *
+     * @return Minutes until expiry, or null if no ad is loaded
+     */
+    fun getMinutesUntilExpiry(): Long? {
+        return loadedAd?.minutesUntilExpiry
+    }
 
     /**
      * Destroys the loader and releases resources.
      */
     fun destroy() {
-        log("Destroying ad loader")
-        nativeAd?.destroy()
-        nativeAd = null
+        loadedAd?.ad?.destroy()
+        loadedAd = null
         adLoader = null
         onAdLoadedCallback = null
     }

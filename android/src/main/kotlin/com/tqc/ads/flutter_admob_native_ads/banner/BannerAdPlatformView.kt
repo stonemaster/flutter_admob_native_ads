@@ -3,14 +3,20 @@ package com.tqc.ads.flutter_admob_native_ads.banner
 import android.content.Context
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.google.android.gms.ads.AdView
 import com.tqc.ads.flutter_admob_native_ads.FlutterAdmobNativeAdsPlugin
 import io.flutter.plugin.common.BinaryMessenger
+import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformView
 
 /**
  * Platform view for displaying banner ads.
+ *
+ * This view uses the shared banner ad from the plugin's BannerAdLoader
+ * instead of creating and loading its own ad. This prevents duplicate
+ * ad requests and ensures the ad is loaded only once per controller.
  */
 class BannerAdPlatformView(
     private val context: Context,
@@ -21,6 +27,7 @@ class BannerAdPlatformView(
 
     companion object {
         private const val TAG = "BannerAdPlatformView"
+        private const val BANNER_CHANNEL_NAME = "flutter_admob_banner_ads"
     }
 
     private val container: FrameLayout = FrameLayout(context).apply {
@@ -30,66 +37,94 @@ class BannerAdPlatformView(
         )
     }
 
-    private var adView: AdView? = null
     private val enableDebugLogs: Boolean
     private val controllerId: String?
+    private val channel: MethodChannel
 
     init {
         enableDebugLogs = creationParams["enableDebugLogs"] as? Boolean ?: false
         controllerId = creationParams["controllerId"] as? String
+        channel = MethodChannel(messenger, BANNER_CHANNEL_NAME)
 
-        log("Initializing banner platform view")
+        log("Initializing banner platform view for controller: $controllerId")
 
-        registerForAdUpdates()
+        // Register to receive the shared banner ad from the loader
+        registerForBannerAd()
     }
 
     /**
-     * Registers with the plugin to receive ad updates.
+     * Registers a callback to receive the banner ad from the shared loader.
+     * Also checks if an ad is already loaded and uses it immediately.
      */
-    private fun registerForAdUpdates() {
-        if (controllerId.isNullOrEmpty()) {
-            log("Invalid controllerId, cannot register for ad updates")
+    private fun registerForBannerAd() {
+        val plugin = FlutterAdmobNativeAdsPlugin.getInstance()
+
+        if (controllerId == null) {
+            log("Invalid controllerId")
             return
         }
 
-        log("Registering for banner ad updates for controller: $controllerId")
+        log("Registering for banner ad with controller: $controllerId")
 
-        // Check if ad is already loaded
-        val existingAdView = FlutterAdmobNativeAdsPlugin.getInstance()?.getBannerAd(controllerId)
-        if (existingAdView != null) {
-            log("Banner ad already loaded, adding to container immediately")
-            onAdLoaded(existingAdView)
+        // Register callback to receive ad when it loads
+        plugin?.registerBannerAdCallback(controllerId!!) { bannerView ->
+            onBannerLoaded(bannerView)
         }
 
-        FlutterAdmobNativeAdsPlugin.getInstance()?.registerBannerAdCallback(controllerId) { adView ->
-            onAdLoaded(adView)
+        // Check if ad is already loaded
+        val existingBanner = plugin?.getBannerAd(controllerId!!)
+        if (existingBanner != null) {
+            log("Banner already loaded, using existing ad view")
+            onBannerLoaded(existingBanner)
+        } else {
+            log("No banner loaded yet, waiting for callback")
         }
     }
 
     /**
-     * Called when an ad is loaded by the loader.
+     * Called when the banner ad is loaded.
+     * Adds the ad view to the container.
      */
-    private fun onAdLoaded(view: AdView) {
-        log("Banner ad loaded, adding to container")
+    private fun onBannerLoaded(bannerView: AdView) {
+        log("Banner received, adding to container")
 
-        adView?.let { container.removeView(it) }
-        adView = view
+        // Remove from previous parent if any
+        (bannerView.parent as? ViewGroup)?.removeView(bannerView)
 
-        container.addView(view, FrameLayout.LayoutParams(
+        // Clear container and add the banner view
+        container.removeAllViews()
+        container.addView(bannerView, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
+
+        log("Banner view added to container")
+    }
+
+    /**
+     * Sends an event to Flutter via method channel.
+     */
+    private fun sendEvent(method: String, arguments: Map<String, Any?>) {
+        try {
+            channel.invokeMethod(method, arguments)
+        } catch (e: Exception) {
+            log("Error sending event $method: ${e.message}")
+        }
     }
 
     override fun getView(): View = container
 
     override fun dispose() {
         log("Disposing banner platform view")
+
+        // Unregister callback
         controllerId?.let {
             FlutterAdmobNativeAdsPlugin.getInstance()?.unregisterBannerAdCallback(it)
         }
+
+        // Remove view from container but don't destroy the ad
+        // (it's managed by the BannerAdLoader)
         container.removeAllViews()
-        adView = null
     }
 
     private fun log(message: String) {

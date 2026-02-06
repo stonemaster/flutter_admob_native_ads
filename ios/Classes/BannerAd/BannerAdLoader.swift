@@ -44,14 +44,10 @@ class BannerAdLoader: NSObject {
 
     /// Loads a banner ad.
     func loadAd() {
-        log("Loading banner ad for unit: \(adUnitId), size: \(adSize)")
-
         guard let rootVC = rootViewController() else {
             log("ERROR: Could not get root view controller!")
             return
         }
-
-        log("Got root view controller: \(rootVC)")
 
         let bannerView = GADBannerView(adSize: adSize)
         bannerView.adUnitID = adUnitId
@@ -60,8 +56,6 @@ class BannerAdLoader: NSObject {
 
         self.bannerView = bannerView
         bannerView.load(GADRequest())
-
-        log("Started banner ad request")
     }
 
     /// Gets the currently loaded banner view.
@@ -71,7 +65,6 @@ class BannerAdLoader: NSObject {
 
     /// Destroys the loader and releases resources.
     func destroy() {
-        log("Destroying banner ad loader")
         bannerView?.delegate = nil
         bannerView = nil
         onAdLoadedCallback = nil
@@ -108,8 +101,6 @@ class BannerAdLoader: NSObject {
 extension BannerAdLoader: GADBannerViewDelegate {
 
     func bannerViewDidReceiveAd(_ bannerView: GADBannerView) {
-        log("Banner ad received")
-
         sendEvent("onAdLoaded", arguments: [
             "controllerId": controllerId
         ])
@@ -132,32 +123,27 @@ extension BannerAdLoader: GADBannerViewDelegate {
     }
 
     func bannerViewDidRecordClick(_ bannerView: GADBannerView) {
-        log("Banner ad clicked")
         sendEvent("onAdClicked", arguments: [
             "controllerId": controllerId
         ])
     }
 
     func bannerViewDidRecordImpression(_ bannerView: GADBannerView) {
-        log("Banner ad impression recorded")
         sendEvent("onAdImpression", arguments: [
             "controllerId": controllerId
         ])
     }
 
     func bannerViewWillPresentScreen(_ bannerView: GADBannerView) {
-        log("Banner ad will present screen")
         sendEvent("onAdOpened", arguments: [
             "controllerId": controllerId
         ])
     }
 
     func bannerViewWillDismissScreen(_ bannerView: GADBannerView) {
-        log("Banner ad will dismiss screen")
     }
 
     func bannerViewDidDismissScreen(_ bannerView: GADBannerView) {
-        log("Banner ad did dismiss screen")
         sendEvent("onAdClosed", arguments: [
             "controllerId": controllerId
         ])

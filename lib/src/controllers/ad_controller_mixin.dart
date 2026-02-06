@@ -125,6 +125,10 @@ mixin AdControllerMixin<TState> {
   /// Gets the runtime type for logging.
   Type get controllerType;
 
+  /// Gets the reloading state index (for background reload without shimmer).
+  /// Returns null if the state enum doesn't have a reloading state.
+  int? get reloadingStateIndex => null;
+
   /// Sets up the method channel for receiving callbacks.
   void setupChannel() {
     channel.setMethodCallHandler(handleMethodCall);
@@ -150,10 +154,6 @@ mixin AdControllerMixin<TState> {
       );
       preloadScheduler = scheduler;
       scheduler.initialize();
-
-      if (enableDebugLogs) {
-        debugPrint('[$controllerType] Smart preload initialized for $id');
-      }
 
       // Trigger initial evaluation
       scheduler.evaluateAndLoad();
@@ -190,10 +190,6 @@ mixin AdControllerMixin<TState> {
     );
     reloadScheduler = scheduler;
     scheduler.initialize();
-
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Smart reload initialized for $id');
-    }
   }
 
   /// Updates the ad visibility state for reload logic.
@@ -202,10 +198,6 @@ mixin AdControllerMixin<TState> {
 
     isAdVisible = isVisible;
     reloadScheduler?.updateAdVisibility(isVisible);
-
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Visibility updated: $isVisible');
-    }
   }
 
   /// Updates the remote config reload interval.
@@ -216,9 +208,6 @@ mixin AdControllerMixin<TState> {
   /// Triggers a smart reload (visibility-aware with cache check).
   void triggerSmartReload() {
     if (optionsMap['enableSmartReload'] != true || reloadScheduler == null) {
-      if (enableDebugLogs) {
-        debugPrint('[$controllerType] Smart reload not enabled, using direct reload');
-      }
       reload();
       return;
     }
@@ -230,17 +219,20 @@ mixin AdControllerMixin<TState> {
   Future<void> performReload() async {
     if (isDisposed) return;
 
-    state = stateFromIndex(1); // loading
+    // Use reloading state if available (keeps showing current ad),
+    // otherwise fall back to loading state
+    final reloadStateIdx = reloadingStateIndex;
+    if (reloadStateIdx != null) {
+      state = stateFromIndex(reloadStateIdx); // reloading (background)
+    } else {
+      state = stateFromIndex(1); // loading (shows shimmer)
+    }
     errorMessage = null;
     errorCode = null;
     stateController.add(state);
 
     // Notify schedulers of state change
     preloadScheduler?.updateAdState(stateIndex);
-
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Performing reload: $id');
-    }
 
     try {
       await channel.invokeMethod(reloadMethodName, {
@@ -326,10 +318,6 @@ mixin AdControllerMixin<TState> {
       preloadCompleter!.complete(true);
       preloadCompleter = null;
     }
-
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Ad loaded: $id');
-    }
   }
 
   /// Handles ad load failure.
@@ -360,36 +348,59 @@ mixin AdControllerMixin<TState> {
   /// Handles ad click.
   void _handleAdClicked() {
     onAdClickedCallback();
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Ad clicked: $id');
-    }
   }
 
   /// Handles ad impression.
   void _handleAdImpression() {
+    // Transition to "shown" state if the state enum supports it
+    // This allows tracking when an ad has actually been viewed
+    try {
+      final shownStateIdx = _getShownStateIndex();
+      if (shownStateIdx != null) {
+        state = stateFromIndex(shownStateIdx);
+        stateController.add(state);
+
+        if (enableDebugLogs) {
+          debugPrint('[$controllerType] Ad impression recorded, state → shown');
+        }
+      }
+    } catch (_) {
+      // State enum doesn't have a "shown" state (e.g., BannerAdState)
+      // This is expected, just continue with normal impression handling
+    }
+
     // Notify scheduler to start cooldown if smart preload enabled
     preloadScheduler?.onAdImpression();
 
     onAdImpressionCallback();
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Ad impression: $id');
+  }
+
+  /// Gets the index of the "shown" state if it exists in the enum.
+  /// Returns null if the state enum doesn't have a "shown" state.
+  int? _getShownStateIndex() {
+    // Try to access state values to check if "shown" exists
+    try {
+      // We'll use reflection-like approach by trying to find shown state
+      // For NativeAdState, shown is at index 3
+      // For BannerAdState, there's no shown state
+      final stateName = state.toString();
+      if (stateName.contains('NativeAdState')) {
+        return 3; // NativeAdState.shown index
+      }
+      return null;
+    } catch (_) {
+      return null;
     }
   }
 
   /// Handles ad opened.
   void _handleAdOpened() {
     onAdOpenedCallback();
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Ad opened: $id');
-    }
   }
 
   /// Handles ad closed.
   void _handleAdClosed() {
     onAdClosedCallback();
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Ad closed: $id');
-    }
   }
 
   /// Handles ad paid event (banner ads only).
@@ -410,10 +421,6 @@ mixin AdControllerMixin<TState> {
     // Notify scheduler of state change
     preloadScheduler?.updateAdState(stateIndex);
 
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Loading ad: $id');
-    }
-
     try {
       await channel.invokeMethod(loadMethodName, {
         'controllerId': id,
@@ -432,9 +439,6 @@ mixin AdControllerMixin<TState> {
 
     // If smart preload enabled, let scheduler decide
     if (optionsMap['enableSmartPreload'] == true && preloadScheduler != null) {
-      if (enableDebugLogs) {
-        debugPrint('[$controllerType] Smart preload enabled, evaluating...');
-      }
       preloadScheduler!.evaluateAndLoad();
       return;
     }
@@ -470,10 +474,6 @@ mixin AdControllerMixin<TState> {
       throw StateError('Cannot reload ad: controller has been disposed');
     }
 
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Reloading ad: $id');
-    }
-
     await performReload();
   }
 
@@ -488,10 +488,6 @@ mixin AdControllerMixin<TState> {
     reloadScheduler?.dispose();
     lifecycleManager?.dispose();
     networkManager?.dispose();
-
-    if (enableDebugLogs) {
-      debugPrint('[$controllerType] Disposing: $id');
-    }
 
     try {
       await channel.invokeMethod(disposeMethodName, {'controllerId': id});

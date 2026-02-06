@@ -38,15 +38,12 @@ class BannerAdLoader(
      * Loads a banner ad.
      */
     fun loadAd() {
-        log("Loading banner ad for unit: $adUnitId, size: ${adSize}")
-
         adView = AdView(context)
         adView?.adUnitId = adUnitId
         adView?.setAdSize(adSize)
 
         adView?.adListener = object : AdListener() {
             override fun onAdLoaded() {
-                log("Banner ad loaded")
                 adView?.let { onAdLoadedCallback?.invoke(it) }
                 sendEvent("onAdLoaded", mapOf("controllerId" to controllerId))
             }
@@ -61,22 +58,18 @@ class BannerAdLoader(
             }
 
             override fun onAdClicked() {
-                log("Banner ad clicked")
                 sendEvent("onAdClicked", mapOf("controllerId" to controllerId))
             }
 
             override fun onAdImpression() {
-                log("Banner ad impression recorded")
                 sendEvent("onAdImpression", mapOf("controllerId" to controllerId))
             }
 
             override fun onAdOpened() {
-                log("Banner ad opened")
                 sendEvent("onAdOpened", mapOf("controllerId" to controllerId))
             }
 
             override fun onAdClosed() {
-                log("Banner ad closed")
                 sendEvent("onAdClosed", mapOf("controllerId" to controllerId))
             }
         }
@@ -93,7 +86,6 @@ class BannerAdLoader(
      * Destroys the loader and releases resources.
      */
     fun destroy() {
-        log("Destroying banner ad loader")
         adView?.destroy()
         adView = null
         onAdLoadedCallback = null

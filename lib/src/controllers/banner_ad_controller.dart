@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../models/ad_state_base.dart';
@@ -14,14 +13,21 @@ import 'ad_controller_mixin.dart';
 
 export 'banner_ad_controller.dart' show BannerAdState;
 
-/// Global registry of all active banner controllers for method call dispatching
-final _bannerControllerRegistry = <BannerAdController>[];
+/// Global registry of all active banner controllers for method call dispatching.
+/// Changed from List to Map for O(1) lookup performance (audit fix #9).
+final _bannerControllerRegistry = <String, BannerAdController>{};
 
-/// Global method call handler that dispatches events to all banner controllers
+/// Global method call handler that dispatches events to the target banner controller.
+/// Changed from O(N) iteration to O(1) direct lookup (audit fix #9).
 Future<dynamic> _globalBannerMethodCallHandler(MethodCall call) async {
-  // Dispatch the call to all controllers
-  for (final controller in _bannerControllerRegistry) {
-    await controller.handleMethodCall(call);
+  // Extract controllerId from arguments for direct lookup
+  final controllerId = call.arguments?['controllerId'] as String?;
+
+  if (controllerId != null) {
+    final controller = _bannerControllerRegistry[controllerId];
+    if (controller != null) {
+      await controller.handleMethodCall(call);
+    }
   }
 }
 
@@ -52,10 +58,11 @@ class BannerAdController extends Object with AdControllerMixin<BannerAdState> {
   BannerAdController({
     required this.options,
     this.events = const BannerAdEvents(),
-  }) : _id = _generateId(),
-       _state = BannerAdState.initial {
+  })  : _id = _generateId(),
+        _state = BannerAdState.initial {
     // Register controller in global registry for method call dispatching
-    _bannerControllerRegistry.add(this);
+    // Changed from List.add to Map assignment for O(1) performance
+    _bannerControllerRegistry[_id] = this;
 
     // Set up global handler only once (first controller)
     if (!_globalBannerHandlerInitialized) {
@@ -178,6 +185,9 @@ class BannerAdController extends Object with AdControllerMixin<BannerAdState> {
   String get disposeMethodName => 'disposeBannerAd';
 
   @override
+  int? get reloadingStateIndex => BannerAdState.reloading.index;
+
+  @override
   void Function() get onAdLoadedCallback => () => events.onAdLoaded?.call();
 
   @override
@@ -188,7 +198,8 @@ class BannerAdController extends Object with AdControllerMixin<BannerAdState> {
   void Function() get onAdClickedCallback => () => events.onAdClicked?.call();
 
   @override
-  void Function() get onAdImpressionCallback => () => events.onAdImpression?.call();
+  void Function() get onAdImpressionCallback =>
+      () => events.onAdImpression?.call();
 
   @override
   void Function() get onAdOpenedCallback => () => events.onAdOpened?.call();
@@ -199,9 +210,6 @@ class BannerAdController extends Object with AdControllerMixin<BannerAdState> {
   @override
   void handleAdPaid(double value, String currency) {
     events.onAdPaid?.call(value, currency);
-    if (enableDebugLogs) {
-      debugPrint('[BannerAdController] Ad paid: \$$value $currency');
-    }
   }
 
   @override
@@ -238,7 +246,8 @@ class BannerAdController extends Object with AdControllerMixin<BannerAdState> {
   @override
   Future<void> dispose() async {
     // Unregister from global registry
-    _bannerControllerRegistry.remove(this);
+    // Changed from List.remove to Map.remove for O(1) performance
+    _bannerControllerRegistry.remove(_id);
 
     // If this was the last controller, clear the global handler
     if (_bannerControllerRegistry.isEmpty) {
@@ -262,13 +271,17 @@ enum BannerAdState implements AdStateBase {
   loaded,
 
   /// Ad failed to load.
-  error;
+  error,
+
+  /// Ad is reloading in background (keeps showing current ad).
+  reloading;
 
   @override
   bool get isLoading => this == BannerAdState.loading;
 
   @override
-  bool get isLoaded => this == BannerAdState.loaded;
+  bool get isLoaded =>
+      this == BannerAdState.loaded || this == BannerAdState.reloading;
 
   @override
   bool get hasError => this == BannerAdState.error;
