@@ -86,7 +86,16 @@ class NativeAdLoader: NSObject {
     /// Loads a native ad.
     func loadAd() {
         // Get root view controller
-        guard let rootViewController = UIApplication.shared.windows.first?.rootViewController else {
+        let rootViewController: UIViewController?
+        if #available(iOS 13.0, *) {
+            rootViewController = UIApplication.shared.connectedScenes
+                .compactMap { ($0 as? UIWindowScene)?.windows.first }
+                .first?.rootViewController
+        } else {
+            rootViewController = UIApplication.shared.windows.first?.rootViewController
+        }
+
+        guard let rootVC = rootViewController else {
             log("No root view controller available")
             sendEvent("onAdFailedToLoad", arguments: [
                 "controllerId": controllerId,
@@ -102,7 +111,7 @@ class NativeAdLoader: NSObject {
 
         adLoader = GADAdLoader(
             adUnitID: adUnitId,
-            rootViewController: rootViewController,
+            rootViewController: rootVC,
             adTypes: [.native],
             options: [options]
         )

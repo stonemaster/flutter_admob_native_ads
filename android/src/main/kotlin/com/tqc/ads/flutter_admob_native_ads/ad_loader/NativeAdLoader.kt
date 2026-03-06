@@ -6,6 +6,8 @@ import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.AdLoader
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.LoadAdError
+import com.google.android.gms.ads.MobileAds
+import com.google.android.gms.ads.RequestConfiguration
 import com.google.android.gms.ads.nativead.NativeAd
 import com.google.android.gms.ads.nativead.NativeAdOptions
 import io.flutter.plugin.common.BinaryMessenger
@@ -145,14 +147,17 @@ class NativeAdLoader(
 
         adLoader = adLoaderBuilder.build()
 
-        val adRequestBuilder = AdRequest.Builder()
-
-        // Add test devices if specified
-        testDeviceIds?.forEach { deviceId ->
-            adRequestBuilder.addTestDevice(deviceId)
+        // Apply test device IDs via global request configuration if specified.
+        // Note: This is a global setting that affects all ad requests in the app.
+        // The Google Mobile Ads SDK only supports per-app test device configuration.
+        if (!testDeviceIds.isNullOrEmpty()) {
+            val config = RequestConfiguration.Builder()
+                .setTestDeviceIds(testDeviceIds)
+                .build()
+            MobileAds.setRequestConfiguration(config)
         }
 
-        adLoader?.loadAd(adRequestBuilder.build())
+        adLoader?.loadAd(AdRequest.Builder().build())
     }
 
     /**
@@ -228,12 +233,4 @@ class NativeAdLoader(
             Log.d(TAG, "[$controllerId] $message")
         }
     }
-}
-
-/**
- * Helper method to add test device - handles deprecation.
- */
-private fun AdRequest.Builder.addTestDevice(deviceId: String): AdRequest.Builder {
-    // Note: setTestDeviceIds is the new way, but we're using the builder pattern
-    return this
 }
