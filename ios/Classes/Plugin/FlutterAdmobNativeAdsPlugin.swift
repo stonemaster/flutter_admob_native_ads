@@ -70,15 +70,6 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
         }
         adLoadedCallbacks[controllerId]?.append(callback)
 
-        let count = adLoadedCallbacks[controllerId]?.count ?? 0
-        print("[FlutterAdmobNativeAds] Registered callback for controller: \(controllerId). Total callbacks: \(count)")
-
-        if count > 1 {
-            print("[FlutterAdmobNativeAds] ⚠️ WARNING: Multiple callbacks registered for controller: \(controllerId). " +
-                    "This may indicate multiple widgets are sharing the same controller. " +
-                    "Each widget should have its own NativeAdController instance.")
-        }
-
         // If ad is already loaded, invoke callback immediately
         if let ad = getPreloadedAd(controllerId: controllerId) {
             DispatchQueue.main.async {
@@ -102,12 +93,10 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
     /// Registers a callback to be invoked when a banner ad is loaded for the given controller.
     /// This allows platform views to receive ads without creating their own loaders.
     public func registerBannerAdCallback(controllerId: String, callback: @escaping (GADBannerView) -> Void) {
-        print("[FlutterAdmobNativeAds] Registering banner callback for controller: \(controllerId)")
         bannerAdCallbacks[controllerId] = callback
 
         // If ad is already loaded, invoke callback immediately
         if let bannerView = getBannerAd(controllerId: controllerId) {
-            print("[FlutterAdmobNativeAds] Banner already loaded for controller: \(controllerId), invoking callback immediately")
             DispatchQueue.main.async {
                 callback(bannerView)
             }
@@ -194,8 +183,6 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
             BannerAdViewFactory(messenger: registrar.messenger()),
             withId: viewTypeBanner
         )
-
-        print("[FlutterAdmobNativeAds] Plugin registered with Form1-Form12 layouts and Banner")
     }
 
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -235,8 +222,6 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
 
         let enableDebugLogs = args["enableDebugLogs"] as? Bool ?? false
 
-        print("[FlutterAdmobNativeAds] Loading ad for controller: \(controllerId)")
-
         guard let channel = channel else {
             result(FlutterError(
                 code: "CHANNEL_ERROR",
@@ -244,6 +229,13 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
                 details: nil
             ))
             return
+        }
+
+        // Apply test device IDs via global request configuration if specified.
+        // Note: This is a global setting that affects all ad requests in the app.
+        // The Google Mobile Ads SDK only supports per-app test device configuration.
+        if let testDeviceIds = args["testDeviceIds"] as? [String], !testDeviceIds.isEmpty {
+            GADMobileAds.sharedInstance().requestConfiguration.testDeviceIdentifiers = testDeviceIds
         }
 
         let loader = NativeAdLoader(
@@ -276,8 +268,6 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
 
         let enableDebugLogs = args["enableDebugLogs"] as? Bool ?? false
 
-        print("[FlutterAdmobNativeAds] Reloading ad for controller: \(controllerId)")
-
         // Destroy existing loader
         adLoaders[controllerId]?.destroy()
 
@@ -288,6 +278,13 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
                 details: nil
             ))
             return
+        }
+
+        // Apply test device IDs via global request configuration if specified.
+        // Note: This is a global setting that affects all ad requests in the app.
+        // The Google Mobile Ads SDK only supports per-app test device configuration.
+        if let testDeviceIds = args["testDeviceIds"] as? [String], !testDeviceIds.isEmpty {
+            GADMobileAds.sharedInstance().requestConfiguration.testDeviceIdentifiers = testDeviceIds
         }
 
         let loader = NativeAdLoader(
@@ -317,8 +314,6 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
             return
         }
 
-        print("[FlutterAdmobNativeAds] Disposing ad for controller: \(controllerId)")
-
         adLoaders[controllerId]?.destroy()
         adLoaders.removeValue(forKey: controllerId)
 
@@ -340,8 +335,6 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
         let sizeIndex = args["size"] as? Int ?? 5
         let enableDebugLogs = args["enableDebugLogs"] as? Bool ?? false
         let customHeight = args["adaptiveBannerHeight"] as? Int
-
-        print("[FlutterAdmobNativeAds] Loading banner ad for controller: \(controllerId)")
 
         guard let bannerChannel = bannerChannel else {
             result(FlutterError(
@@ -367,19 +360,14 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
         // Set callback to notify registered platform views
         loader.setOnAdLoadedCallback { [weak self] bannerView in
             guard let self = self else { return }
-            print("[FlutterAdmobNativeAds] Banner ad loaded callback invoked for controller: \(controllerId)")
-            print("[FlutterAdmobNativeAds] Registered callbacks: \(self.bannerAdCallbacks.keys)")
 
             // Cache the bannerView to handle race condition with platform view creation
             self.loadedBannerAds[controllerId] = bannerView
 
             if let callback = self.bannerAdCallbacks[controllerId] {
-                print("[FlutterAdmobNativeAds] Invoking callback for controller: \(controllerId)")
                 DispatchQueue.main.async {
                     callback(bannerView)
                 }
-            } else {
-                print("[FlutterAdmobNativeAds] WARNING: No callback registered for controller: \(controllerId)")
             }
         }
 
@@ -404,8 +392,6 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
         let sizeIndex = args["size"] as? Int ?? 5
         let enableDebugLogs = args["enableDebugLogs"] as? Bool ?? false
         let customHeight = args["adaptiveBannerHeight"] as? Int
-
-        print("[FlutterAdmobNativeAds] Reloading banner ad for controller: \(controllerId)")
 
         // Destroy existing loader
         bannerAdLoaders[controllerId]?.destroy()
@@ -434,19 +420,14 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
         // Set callback to notify registered platform views
         loader.setOnAdLoadedCallback { [weak self] bannerView in
             guard let self = self else { return }
-            print("[FlutterAdmobNativeAds] Banner ad loaded callback invoked for controller: \(controllerId)")
-            print("[FlutterAdmobNativeAds] Registered callbacks: \(self.bannerAdCallbacks.keys)")
 
             // Cache the bannerView to handle race condition with platform view creation
             self.loadedBannerAds[controllerId] = bannerView
 
             if let callback = self.bannerAdCallbacks[controllerId] {
-                print("[FlutterAdmobNativeAds] Invoking callback for controller: \(controllerId)")
                 DispatchQueue.main.async {
                     callback(bannerView)
                 }
-            } else {
-                print("[FlutterAdmobNativeAds] WARNING: No callback registered for controller: \(controllerId)")
             }
         }
 
@@ -467,8 +448,6 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
             return
         }
 
-        print("[FlutterAdmobNativeAds] Disposing banner ad for controller: \(controllerId)")
-
         bannerAdLoaders[controllerId]?.destroy()
         bannerAdLoaders.removeValue(forKey: controllerId)
         bannerAdCallbacks.removeValue(forKey: controllerId)
@@ -478,7 +457,6 @@ public class FlutterAdmobNativeAdsPlugin: NSObject, FlutterPlugin {
     }
 
     public func detachFromEngine(for registrar: FlutterPluginRegistrar) {
-        print("[FlutterAdmobNativeAds] Plugin detached from engine")
 
         // Clean up all loaders
         adLoaders.values.forEach { $0.destroy() }
@@ -519,7 +497,6 @@ extension FlutterAdmobNativeAdsPlugin: NativeAdLoaderDelegate {
 
     func adLoader(_ loader: NativeAdLoader, didFailWithError error: Error) {
         // Error is already sent via method channel by the loader
-        print("[FlutterAdmobNativeAds] Ad failed to load: \(error.localizedDescription)")
     }
 }
 
@@ -538,6 +515,5 @@ extension FlutterAdmobNativeAdsPlugin: BannerAdLoaderDelegate {
 
     func adLoader(_ loader: BannerAdLoader, didFailWithError error: Error) {
         // Error is already sent via method channel by the loader
-        print("[FlutterAdmobNativeAds] Banner ad failed to load: \(error.localizedDescription)")
     }
 }
